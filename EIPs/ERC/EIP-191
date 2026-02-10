@@ -1,0 +1,181 @@
+# ERC-191: Signed Data Standard
+
+ERC-191 defines a standard for signing arbitrary data in Ethereum, aiming to prevent ambiguity and replay attacks that arise from unclear interpretation of signed data.
+
+---
+
+## Background
+
+A **presigned transaction** consists of:
+- A chunk of binary `signed_data`
+- A signature `(r, s, v)`
+
+Historically, the interpretation of `signed_data` was **not specified**, which led to several critical issues.
+
+### Problems with Unspecified Signed Data
+
+#### 1. Ethereum Transactions as Signed Data
+
+A standard Ethereum transaction can be submitted as `signed_data`.
+
+An Ethereum transaction can be unpacked into:
+RLP(nonce, gasPrice, startGas, to, value, data), r, s, v
+
+This creates ambiguity between:
+- A signed message
+- A signed Ethereum transaction
+
+#### 2. Multisignature Wallet Replay Attack
+
+Presigned transactions were not bound to a specific validator (wallet), enabling replay attacks.
+
+**Scenario:**
+1. Users A, B, and C control a 2-of-3 multisig wallet **X**
+2. Users A, B, and D control another 2-of-3 multisig wallet **Y**
+3. Users A and B submit presigned transactions to wallet **X**
+4. An attacker reuses the same presigned transactions and submits them to wallet **Y**
+
+This happens because the signed data does not specify **which wallet** it is intended for.
+
+---
+
+## Specification
+
+ERC-191 proposes the following canonical format for `signed_data`:
+0x19 <1-byte version> <version-specific data> <data to sign>
+
+
+### Design Rationale
+
+- The leading byte `0x19` ensures that `signed_data` is **not valid RLP**.
+- In RLP encoding:
+  - Any single byte in the range `[0x00, 0x7f]` is its own RLP encoding.
+- Therefore, `0x19 || ...` can never represent a valid RLP structure.
+
+✅ **Result:**  
+Any ERC-191 `signed_data` **can never be interpreted as an Ethereum transaction**.
+
+---
+
+## Registry of Version Bytes
+
+This registry defines version bytes used to distinguish different signing and encoding formats under ERC-191.
+
+### Version Bytes Table
+
+| Version Byte | EIP  | Description                  |
+|-------------:|------|------------------------------|
+| `0x00`       | 191  | Data with intended validator |
+| `0x01`       | 712  | Structured data              |
+| `0x45`       | 191  | `personal_sign` messages     |
+
+## Version-Specific Formats
+
+ERC-191 defines multiple signing formats through version bytes. Each version specifies how
+`version-specific data` is constructed and interpreted.
+
+---
+
+## Version `0x00` — Intended Validator
+
+### Format
+0x19 <0x00> <"intended validator address"> <"data to sign">
+
+
+### Description
+
+Version `0x00` binds the signed data to a **specific validator address**.
+
+- The `intended validator address` is the address that is expected to validate the signature.
+- In the case of a **multisignature wallet**, this should be the address of the multisig contract itself.
+- `data to sign` can be any arbitrary application-specific data.
+
+### Purpose
+
+This version prevents replay attacks across validators by ensuring that a signature created
+for one contract **cannot be reused** on another contract.
+
+---
+
+## Version `0x01` — Structured Data (EIP-712)
+
+Version `0x01` is reserved for **typed structured data**, as defined in **EIP-712**.
+
+This version enables:
+- Human-readable signing
+- Domain separation
+- Strong replay protection across chains and contracts
+
+---
+
+## Version `0x45` (`E`) — `personal_sign`
+
+### Format
+0x19 <0x45> <"Ethereum Signed Message:\n" + len(message)> <data to sign>
+
+
+### Description
+
+- Version byte `0x45` corresponds to the ASCII character **`E`**.
+- The string `"Ethereum Signed Message:\n" + len(message)` is used as version-specific data.
+- `data to sign` can be any arbitrary message.
+
+This format is commonly exposed by wallets via the `personal_sign` RPC method.
+
+### Note
+
+The `E` in **Ethereum Signed Message** refers directly to the version byte:
+
+- ASCII `'E'` = `0x45`
+- The remainder of the string (`"thereum Signed Message:\n" + len(message)`)
+  forms the version-specific data
+
+---
+
+## Example (Solidity)
+
+The following example demonstrates how **Version `0x00`** is used in a
+signature-based execution flow.
+
+> Written in Solidity `^0.8.0`
+
+```solidity
+function signatureBasedExecution(
+    address target,
+    uint256 nonce,
+    bytes memory payload,
+    uint8 v,
+    bytes32 r,
+    bytes32 s
+) public payable {
+
+    // Arguments used when computing the signed hash:
+    // 1. byte(0x19)        - ERC-191 prefix
+    // 2. byte(0x00)        - version byte
+    // 3. address(this)    - intended validator address
+    // 4+. application-specific data
+
+    bytes32 hash = keccak256(
+        abi.encodePacked(
+            byte(0x19),
+            byte(0x00),
+            address(this),
+            msg.value,
+            nonce,
+            payload
+        )
+    );
+
+    // Recover signer from hash and signature
+    address addressRecovered = ecrecover(hash, v, r, s);
+
+    // Wallet logic
+    // if (addressRecovered == owner) {
+    //     executeOnTarget(target, payload);
+    // }
+}
+
+
+
+
+
