@@ -1,0 +1,29 @@
+# --- Foundry Artifacts ---
+out/
+cache/
+artifacts/
+
+# --- Dependencies ---
+# Nếu bạn quản lý lib qua git submodules thì KHÔNG nên ignore lib/
+# Nhưng nếu bạn muốn repo nhẹ, có thể ignore và để người dùng tự install
+# lib/
+
+# --- Env & Secrets (Cực kỳ quan trọng) ---
+.env
+.env.local
+.env.secret
+
+# --- Forge Broadcasts (Chứa thông tin giao dịch đã gửi) ---
+broadcast/
+
+# --- System Files ---
+.DS_Store
+Thumbs.db
+
+# --- Python (Nếu bạn dùng thêm script bổ trợ) ---
+__pycache__/
+*.pyc
+
+# --- JavaScript/Node (Nếu bạn dùng chung với Hardhat/Truffle) ---
+node_modules/
+package-lock.json
